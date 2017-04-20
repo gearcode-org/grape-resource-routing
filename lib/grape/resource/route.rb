@@ -5,17 +5,41 @@ module Grape
       AVAILABLE_METHODS = [:index, :create, :show, :update, :delete]
 
       class << self
+
+        # class attributes
+        attr_reader :collection_endpoints
+        attr_reader :member_endpoints
+
         # ===== Examples
         #
         #   class PostsRoute < Grape::Resource::Route
         #     route_for Post, as: :posts, only: :index, :except: :index
         #   end
         def route_for(resource_class, **args)
-          # class_eval <<-RUBY, __FILE__, __LINE__+1
-          # RUBY
           define_method :routing_options do
             { for: resource_class }.merge(args)
           end
+        end
+
+        # ===== Examples
+        #
+        #   class PostsRoute < Grape::Resource::Route
+        #     post :publish do
+        #       record.publish!
+        #       record
+        #     end
+        #   end
+        %w(get post put delete).each do |method|
+          define_method method do |*args, &block|
+            path = args.any? ? args.first : nil
+            create_endpoint(method, path, &block)
+          end
+        end
+
+        def create_endpoint(method, path, &block)
+          @collection_endpoints = (@collection_endpoints || []).push(
+            [method, path, block]
+          )
         end
       end
 
@@ -26,37 +50,35 @@ module Grape
       end
 
       def grape_route_class
+        handler     = self
         cls         = resource_class
         cls_alias   = resource_alias
         param_alias = resource_param_alias
         r_methods   = resource_methods
 
-        route_class = Class.new(Grape::API) do
+        # class_eval <<-RUBY, __FILE__, __LINE__+1
+        Class.new(Grape::API) do
           namespace cls_alias do
             
             helpers do
+              def resource_route
+                handler
+              end
+
               def record_params
-                params[param_alias]
+                params[handler.param_alias]
               end
             end
 
-            if r_methods.include?(:index)
-              get do
-                cls.all
-              end
-            end
-
-            if r_methods.include?(:create)
-              post do
-                cls.new(record_params).save!
-              end
+            handler.collection_endpoints.each do |method, name, &block|
+              self.send(method, name, &block)
             end
 
             if [:show, :update, :delete].any?{ |m| r_methods.include?(m) }
               route_param :id do
                 if r_methods.include?(:show)
                   get do
-                    cls.find(params[:id])
+                    resource_route.resource_class.find(params[:id])
                   end
                 end
 
@@ -77,8 +99,10 @@ module Grape
                 end
               end
             end
+
           end
         end
+        # RUBY
       end
 
       def resource_param_alias
@@ -93,21 +117,52 @@ module Grape
         routing_options.fetch(:as, resource_class.to_s.underscore.pluralize.to_sym)
       end
 
-      def resource_methods
-        only = Array(routing_options.fetch(:only, []))
-        except = Array(routing_options.fetch(:except, []))
-
-        if only.any? { |m| AVAILABLE_METHODS.include?(m) }
-          return only.select { |m| AVAILABLE_METHODS.include?(m) }
-        end
-
-        if except.any? { |m| AVAILABLE_METHODS.include?(m) }
-          return AVAILABLE_METHODS - except
-        end
-
-        AVAILABLE_METHODS
+      def only_routing
+        @only_routing ||= Array(routing_options.fetch(:only, []))
+          .select { |m| AVAILABLE_METHODS.include?(m) }
       end
 
+      def except_routing
+        @except_routing ||= Array(routing_options.fetch(:except, []))
+          .select { |m| AVAILABLE_METHODS.include?(m) }
+      end
+
+      def resource_methods
+        @resource_methods ||= if only_routing.any?
+          only_routing
+        elsif except_routing.any?
+          AVAILABLE_METHODS - except_routing
+        else
+          AVAILABLE_METHODS
+        end        
+      end
+
+      def collection_endpoints
+        @collection_endpoints ||= default_collection_endpoints + Array(self.class.collection_endpoints)
+      end
+
+      def default_collection_endpoints
+        [].tap do |c|
+          c << build_index_endpoint  if resource_methods.include?(:index)
+          c << build_create_endpoint if resource_methods.include?(:create)
+        end
+      end
+
+      def build_index_endpoint
+        build_endpoint :get, nil do
+          resource_route.resource_class.all
+        end
+      end
+
+      def build_create_endpoint
+        build_endpoint :post, nil do
+          resource_route.resource_class.new(record_params).save!
+        end
+      end
+
+      def build_endpoint(method, path, &block)
+        [method, path, block]
+      end
     end
   end
 end

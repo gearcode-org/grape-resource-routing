@@ -1,23 +1,24 @@
 require 'spec_helper'
 
 RSpec.describe Grape::Resource::Route, type: :resource do
+  
+  let(:routes) do
+    subject.grape_route_class.routes.map { |e| [e.request_method, e.path.gsub(/\(.*\)/, '')] }
+  end
+
+  before do
+    stub_const 'Post', Class.new
+    stub_const 'PostsRoute', posts_route_class
+  end
+
+  subject { PostsRoute.new }
+
   context 'when set route_for' do
     let(:posts_route_class) do
       Class.new(Grape::Resource::Route) do
         route_for Post, as: :posts
       end
     end
-
-    let(:routes) do
-      subject.grape_route_class.routes.map { |e| [e.request_method, e.path.gsub(/\(.*\)/, '')] }
-    end
-
-    before do
-      stub_const 'Post', Class.new
-      stub_const 'PostsRoute', posts_route_class
-    end
-
-    subject { PostsRoute.new }
 
     it 'should respond to resource_class' do
       should respond_to(:resource_class)
@@ -55,6 +56,24 @@ RSpec.describe Grape::Resource::Route, type: :resource do
         expect(routes).to include(['PUT', '/posts/:id'])
         expect(routes).to include(['DELETE', '/posts/:id'])
       end
+    end
+  end
+
+  context 'when create a custom endpoint "post :publish"' do
+    let(:posts_route_class) do
+      Class.new(Grape::Resource::Route) do
+        route_for Post, as: :posts
+
+        post :publish do
+          # publish
+        end
+      end
+    end
+
+    it '#grape_route_class should have route POST /posts/publish' do
+      should_not respond_to(:post)
+      expect(subject.class).to respond_to(:post)
+      expect(routes).to include(['POST', '/posts/publish'])
     end
   end
 end

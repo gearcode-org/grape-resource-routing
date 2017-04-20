@@ -1,10 +1,9 @@
 # ===== Examples
 #
 #   class Posts < Grape::Resource::Route
-#     route_for   Post, as: :posts
+#     route_for   Post, as: :posts, only: [:index, :show], except: [:show]
 #     public      false
-#     only        [:index, :show, :create, :update, :delete]
-#     except      [:show]
+#     
 #     belongs_to  :company # use this feature to allow class access the parent resource. Otherwise, it can't
 #     presenter   PostPresenter
 #     policy      PostPolicy
@@ -55,3 +54,4 @@
 
 require 'grape'
 require 'grape/extensions/resource_mounter'
+require 'grape/resource/route'

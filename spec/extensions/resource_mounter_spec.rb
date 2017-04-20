@@ -11,7 +11,7 @@ RSpec.describe Grape::Extensions::ResourceMounter, type: :extension do
 
     let(:routing_class) do
       Class.new(Grape::API) do
-        mount_resource Post
+        mount_resource Grape::Resource::Route, for: Post, as: :posts
       end
     end
 
